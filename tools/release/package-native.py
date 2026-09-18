@@ -12,7 +12,7 @@ def download(url,digest,path):
  urllib.request.urlretrieve(url,path)
  if hashlib.sha256(path.read_bytes()).hexdigest()!=digest:raise RuntimeError('Tool checksum mismatch')
 def main():
- m=json.loads(Path('connector.json').read_text());binary=m['runtime']['command']
+ m=json.loads(Path('connector.json').read_text(encoding="utf-8"));binary=m['runtime']['command']
  platform=os.environ['RELEASE_PLATFORM'];arch=os.environ['RELEASE_ARCH'];publish=os.environ.get('PUBLISH')=='true'
  if platform=='windows':os.environ['RUSTFLAGS']='-C target-feature=+crt-static -D warnings'
  if platform=='macos':os.environ['MACOSX_DEPLOYMENT_TARGET']='11.0'

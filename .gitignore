@@ -7,3 +7,5 @@ target/
 tmp/
 
 __pycache__/
+
+release-output/

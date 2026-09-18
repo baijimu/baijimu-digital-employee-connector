@@ -29,15 +29,15 @@ def main():
  names=['OSS_ACCESS_KEY_ID','OSS_ACCESS_KEY_SECRET','OSS_BUCKET','OSS_ENDPOINT','OSS_REGION','OSS_PUBLIC_BASE','LOCAL_APP_MARKET_PUBLISH_TOKEN','LOCAL_APP_OWNER_WORKSPACE_ID','GITHUB_REPOSITORY']
  for name in names:
   if not os.environ.get(name):raise RuntimeError('Missing release configuration: '+name)
- manifest=json.loads(Path('connector.json').read_text());version=manifest['version'];repo=manifest['source']['repo'];tag=manifest['source']['revision']
+ manifest=json.loads(Path('connector.json').read_text(encoding="utf-8"));version=manifest['version'];repo=manifest['source']['repo'];tag=manifest['source']['revision']
  if repo!=os.environ['GITHUB_REPOSITORY']:raise RuntimeError('Release repository mismatch')
- out=Path('release-output');rows=[json.loads((out/(p+'.json')).read_text()) for p in ['macos','windows','linux']]
+ out=Path('release-output');rows=[json.loads((out/(p+'.json')).read_text(encoding="utf-8")) for p in ['macos','windows','linux']]
  for row in rows:
   archive=out/row['name'];digest=hashlib.sha256(archive.read_bytes()).hexdigest()
   if row['checksum']!='sha256:'+digest:raise RuntimeError('Artifact digest mismatch')
   with zipfile.ZipFile(archive) as z:
    if json.loads(z.read('connector.json'))!=manifest:raise RuntimeError('Packaged manifest mismatch')
- config=json.loads(Path('.github/release-tools.json').read_text())
+ config=json.loads(Path('.github/release-tools.json').read_text(encoding="utf-8"))
  with tempfile.TemporaryDirectory() as tmp:
   tmp=Path(tmp)
   for key in ['ossutil','baijimu']:
@@ -66,7 +66,7 @@ def main():
   run(['gh','release','edit',tag,'--repo',repo,'--draft=false','--latest=false'])
   os.environ['BAIJIMU_CLI']=str(cli);os.environ['MARKET_PUBLICATION_STATUS_FILE']=str(tmp/'publication-status')
   run(['bash','tools/release/publish-market.sh',version,'connector.json',str(oss_path)])
-  status=(tmp/'publication-status').read_text().strip()
+  status=(tmp/'publication-status').read_text(encoding="utf-8").strip()
   if status not in ['PENDING_REVIEW','PUBLISHED']:raise RuntimeError('Unexpected publication status')
   print('Source publication:',status)
 if __name__=='__main__':

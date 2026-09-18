@@ -189,8 +189,8 @@ def main():
         subprocess.run([executable, "auth", "login", "--token", os.environ["LOCAL_APP_MARKET_PUBLISH_TOKEN"],
                         "--workspace-id", str(workspace), "--no-browser", "--json"],
                        stdout=subprocess.DEVNULL, check=True)
-        state = publish(Cli(executable, workspace), version, json.loads(Path(connector_path).read_text()),
-                        json.loads(Path(oss_path).read_text()), directory)
+        state = publish(Cli(executable, workspace), version, json.loads(Path(connector_path).read_text(encoding="utf-8")),
+                        json.loads(Path(oss_path).read_text(encoding="utf-8")), directory)
         Path(os.environ["MARKET_PUBLICATION_STATUS_FILE"]).write_text(state + "\n")
         print("source publication state=" + state)
 
