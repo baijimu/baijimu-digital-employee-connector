@@ -1,0 +1,109 @@
+name: digital-employee-release
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Main for verification, immutable v<version> tag for release
+        type: string
+        default: main
+        required: true
+      publish:
+        description: Sign, publish immutable artifacts, freeze source version and submit review
+        type: boolean
+        default: false
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: digital-employee-release-${{ inputs.release_ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.release_ref }}
+          fetch-depth: 0
+      - id: source
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          python3 tools/release/validate-source.py
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - run: cargo fmt --check
+      - run: cargo test --locked
+      - run: npm test
+      - run: python3 -m unittest discover -s test -p 'test_*.py'
+  package:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux
+            architecture: x86_64
+          - runner: macos-15-intel
+            platform: macos
+            architecture: universal
+          - runner: windows-latest
+            platform: windows
+            architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - name: Build, test, sign and package this platform
+        shell: bash
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+          RELEASE_ARCH: ${{ matrix.architecture }}
+          PUBLISH: ${{ inputs.publish }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          SSL_COM_USERNAME: ${{ secrets.SSL_COM_USERNAME }}
+          SSL_COM_PASSWORD: ${{ secrets.SSL_COM_PASSWORD }}
+          SSL_COM_CREDENTIAL_ID: ${{ secrets.SSL_COM_CREDENTIAL_ID }}
+          SSL_COM_TOTP_SECRET: ${{ secrets.SSL_COM_TOTP_SECRET }}
+        run: python3 tools/release/package-native.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: employee-${{ matrix.platform }}
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    if: inputs.publish
+    needs: [validate, package]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: employee-*
+          path: release-output
+          merge-multiple: true
+      - name: Publish verified signed bytes to OSS and GitHub, then submit source version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          LOCAL_APP_MARKET_PUBLISH_TOKEN: ${{ secrets.LOCAL_APP_MARKET_PUBLISH_TOKEN }}
+          LOCAL_APP_OWNER_WORKSPACE_ID: ${{ vars.LOCAL_APP_OWNER_WORKSPACE_ID }}
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.OSS_REGION }}
+          OSS_PUBLIC_BASE: ${{ vars.OSS_PUBLIC_BASE }}
+        run: python3 tools/release/publish-native.py

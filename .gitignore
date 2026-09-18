@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+target/
+.DS_Store
+*.log
+*.pid
+tmp/
+
+__pycache__/

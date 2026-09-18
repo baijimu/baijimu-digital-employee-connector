@@ -1,0 +1,24 @@
+{
+  "name": "@baijimu/digital-employee-connector",
+  "version": "1.0.0",
+  "description": "独立 app-server 数字员工 Connector",
+  "type": "module",
+  "bin": {
+    "baijimu-digital-employee-connector": "./bin/baijimu-digital-employee-connector.js"
+  },
+  "scripts": {
+    "test": "node --test test/connector-contract.test.mjs test/platform-cli-boundary.test.mjs",
+    "test:rust": "cargo test",
+    "start": "cargo run -- start"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "baijimu",
+    "connector",
+    "codex",
+    "app-server"
+  ],
+  "license": "MIT"
+}

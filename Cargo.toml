@@ -1,0 +1,20 @@
+[package]
+name = "baijimu-digital-employee-connector"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "通过私有 app-server 运行数字员工的百积木连接器。"
+
+[[bin]]
+name = "baijimu-digital-employee-connector"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+libc = "0.2"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+semver = "1.0"
+sha2 = "0.10"
