@@ -1,0 +1,24 @@
+name: digital-employee-verify
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: python tools/release/validate-source.py
+      - run: cargo fmt --check
+      - run: cargo test --locked
+      - run: npm test
+      - run: python -m unittest discover -s test -p 'test_*.py'
