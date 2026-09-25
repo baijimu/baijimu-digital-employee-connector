@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      verify_macos_signing:
+        description: Verify actual macOS signing and cleanup without building release artifacts
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -22,3 +27,31 @@ jobs:
       - run: cargo test --locked
       - run: npm test
       - run: python -m unittest discover -s test -p 'test_*.py'
+  verify-macos-signing:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_macos_signing
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Verify real signing with a disposable executable
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess, sys, tempfile
+          from pathlib import Path
+          sys.path.insert(0, 'tools/release')
+          from macos_signing import sign
+          before = subprocess.check_output(['security', 'list-keychains', '-d', 'user'])
+          with tempfile.TemporaryDirectory() as temporary:
+              root = Path(temporary)
+              binary = root / 'signing-probe'
+              binary.write_bytes(Path('/usr/bin/true').read_bytes())
+              binary.chmod(0o700)
+              sign(binary, root, os.environ['APPLE_SIGNING_IDENTITY'])
+              assert not (root / 'certificate.p12').exists()
+              assert not (root / 'signing.keychain-db').exists()
+          assert subprocess.check_output(['security', 'list-keychains', '-d', 'user']) == before
+          print('Verified real signature and keychain cleanup; no release artifacts created')
+          PY
