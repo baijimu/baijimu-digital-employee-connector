@@ -24,7 +24,7 @@ Bridge Agent 分配的 `BAIJIMU_LOCAL_APP_DATA_DIR/runtime/codex` 是唯一 `COD
 
 运行 `cargo fmt --check`、`cargo test --locked`、`npm test` 和 Python 发布合同测试。独立发布入口为本仓库 `.github/workflows/release.yml`，签名、OSS 和来源发布凭据必须在本仓库独立配置。不得借用桌面 Connector 的流水线或应用身份。来源版本冻结后提交独立市场审核，待审不等于公开可安装。
 
-发布仓库需配置 Secrets：`APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`SSL_COM_USERNAME`、`SSL_COM_PASSWORD`、`SSL_COM_CREDENTIAL_ID`、`SSL_COM_TOTP_SECRET`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、`LOCAL_APP_MARKET_PUBLISH_TOKEN`。Variables：`APPLE_SIGNING_IDENTITY`、`LOCAL_APP_OWNER_WORKSPACE_ID`、`OSS_BUCKET`、`OSS_ENDPOINT`、`OSS_REGION`、`OSS_PUBLIC_BASE`。值由签名、存储和来源应用各自所有者提供。
+发布仓库需配置 Secrets：`APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`SSL_COM_USERNAME`、`SSL_COM_PASSWORD`、`SSL_COM_CREDENTIAL_ID`、`SSL_COM_TOTP_SECRET`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、`LOCAL_APP_MARKET_PUBLISH_TOKEN`。Variables：`APPLE_SIGNING_IDENTITY`、`LOCAL_APP_OWNER_WORKSPACE_ID`、`OSS_BUCKET`、`OSS_ENDPOINT`、`OSS_REGION`、`OSS_PUBLIC_BASE`、`OSS_DOWNLOAD_BASE`。值由签名、存储和来源应用各自所有者提供。
 
 先对 `main` 运行 `publish=false` 三平台演练，通过后从已验证主线提交创建 `v1.0.1`，再对该标签运行 `publish=true`。不可变制品发布中断时保留第一次成功的签名字节；不能用重新签名产生的不同字节覆盖同一版本。市场待审需独立审核，禁止作者自行批准。
 
@@ -51,3 +51,5 @@ python3 tools/smoke-runtime.py --connector target/debug/baijimu-digital-employee
 ```
 
 该检查使用临时应用数据目录，验证 HTTP 鉴权、工作区上下文、独立 app-server 初始化、空登录态、任务创建与读取，以及 Unix 子进程退出。它不登录账号、不发起模型轮次；发布验收仍需在宿主安装后，以员工独立授权完成一次任务、审批和事件回传。
+
+发布机访问 OSS 的传输地址与公开制品身份分开配置：`OSS_ENDPOINT` 用于上传；`OSS_DOWNLOAD_BASE` 用于发布工具和制品的 OSS 下载回读，可配置为已启用的 Bucket 传输加速入口。`OSS_PUBLIC_BASE` 继续写入公开 manifest，恢复发布不得改变它或既有制品字节。只有严格匹配公开地址前缀的无签名 URL 才转换下载入口，外部工具来源不转换。下载日志记录地址、字节数和耗时，并隐藏查询参数与用户信息。

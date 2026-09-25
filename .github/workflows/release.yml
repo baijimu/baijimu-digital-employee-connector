@@ -66,6 +66,7 @@ jobs:
           OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
           OSS_REGION: ${{ vars.OSS_REGION }}
           OSS_PUBLIC_BASE: ${{ vars.OSS_PUBLIC_BASE }}
+          OSS_DOWNLOAD_BASE: ${{ vars.OSS_DOWNLOAD_BASE }}
         run: python3 tools/release/preflight.py
       - run: cargo fmt --check
       - run: cargo test --locked
@@ -170,6 +171,7 @@ jobs:
           OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
           OSS_REGION: ${{ vars.OSS_REGION }}
           OSS_PUBLIC_BASE: ${{ vars.OSS_PUBLIC_BASE }}
+          OSS_DOWNLOAD_BASE: ${{ vars.OSS_DOWNLOAD_BASE }}
         run: |
           if [ -n "$RECOVERY_RUN_ID" ]; then
             python3 .release-tools/tools/release/publish-native.py

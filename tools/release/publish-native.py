@@ -3,18 +3,29 @@
 Already-uploaded bytes must match; reruns never overwrite tags or release assets.
 If a signed rebuild differs, use the archived first-run artifacts for recovery.
 """
-import hashlib,json,os,subprocess,sys,tempfile,urllib.error,urllib.parse,urllib.request,zipfile
+import hashlib,json,os,subprocess,sys,tempfile,time,urllib.error,urllib.parse,urllib.request,zipfile
+from download_transport import transport_url, safe_url
 from pathlib import Path
 from artifact_contract import validate_artifacts
 def run(args,**kw):
  r=subprocess.run(args,**kw)
  if r.returncode:raise RuntimeError('Release operation failed: '+str(args[0]))
 def get(url):
+ target=transport_url(url);started=time.monotonic()
+ print('Download start: '+safe_url(target),flush=True)
  try:
-  with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Baijimu release'}),timeout=60) as r:return r.read()
+  with urllib.request.urlopen(urllib.request.Request(target,headers={'User-Agent':'Baijimu release'}),timeout=60) as r:
+   data=r.read()
+  print(f'Download complete: {safe_url(target)} bytes={len(data)} elapsed={time.monotonic()-started:.1f}s',flush=True)
+  return data
  except urllib.error.HTTPError as e:
-  if e.code==404:return None
-  raise
+  e.close()
+  if e.code==404:
+   print('Download absent (404): '+safe_url(target),flush=True)
+   return None
+  raise RuntimeError(f'Download failed: {safe_url(target)} HTTP {e.code}') from None
+ except (OSError,urllib.error.URLError) as e:
+  raise RuntimeError(f'Download failed: {safe_url(target)} elapsed={time.monotonic()-started:.1f}s ({type(e).__name__}: {e.reason if isinstance(e,urllib.error.URLError) else type(e).__name__})') from None
 def github_release(repo,tag):
  result=subprocess.run(['gh','api','--include',f'repos/{repo}/releases/tags/{urllib.parse.quote(tag,safe="")}'],capture_output=True,text=True)
  headers,separator,body=result.stdout.replace('\r\n','\n').partition('\n\n')
