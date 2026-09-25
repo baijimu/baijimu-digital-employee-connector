@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 from urllib.parse import urlsplit
+from download_transport import transport_url, safe_url
 
 
 def require(condition, message):
@@ -29,6 +30,7 @@ class Cli:
         self.executable, self.workspace = executable, workspace
 
     def call(self, *args, missing=False):
+        print("Source CLI: " + " ".join(args[:3]), flush=True)
         result = subprocess.run([self.executable, *args, "--workspace-id", str(self.workspace), "--json"],
                                 capture_output=True, text=True)
         operation = " ".join(args[:3])
@@ -113,9 +115,11 @@ def publish(cli, version, connector, oss, directory):
     originals = []
     for index, artifact in enumerate(oss["artifacts"]):
         path = directory / f"original-{index}.zip"
+        target = transport_url(artifact["source"])
+        print("Verify public artifact via: " + safe_url(target), flush=True)
         subprocess.run(["curl", "--disable", "--fail", "--silent", "--show-error", "--location",
                         "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "15",
-                        "--max-time", "900", "--output", str(path), artifact["source"]], check=True)
+                        "--max-time", "900", "--output", str(path), target], check=True)
         require(checksum(path) == artifact["checksum"], "Published artifact checksum mismatch")
         originals.append((artifact, path))
     frozen = cli.call("local-app", "version", "get", app_id, version, missing=True)

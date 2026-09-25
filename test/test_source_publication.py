@@ -2,12 +2,14 @@ import copy
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools/release"))
 spec = importlib.util.spec_from_file_location("publisher", ROOT / "tools/release/publish-market.py")
 publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
