@@ -1,6 +1,7 @@
 """Own native build/signing route for the digital employee release unit."""
-import base64, hashlib, json, os, shutil, subprocess, sys, tempfile, urllib.request, zipfile
+import hashlib, json, os, shutil, subprocess, sys, tempfile, urllib.request, zipfile
 from pathlib import Path
+from macos_signing import sign as sign_macos
 
 def run(args, **kw):
  r=subprocess.run(args,**kw)
@@ -28,15 +29,7 @@ def main():
    run(['cargo','build','--release','--locked']);shutil.copy2(Path('target/release')/target.name,target)
   if publish and platform=='macos':
    required('APPLE_CERTIFICATE','APPLE_CERTIFICATE_PASSWORD','APPLE_SIGNING_IDENTITY')
-   cert=tmp/'certificate.p12';cert.write_bytes(base64.b64decode(os.environ['APPLE_CERTIFICATE']));keychain=tmp/'signing.keychain-db';password=os.urandom(24).hex()
-   try:
-    run(['security','create-keychain','-p',password,str(keychain)])
-    run(['security','unlock-keychain','-p',password,str(keychain)])
-    run(['security','import',str(cert),'-k',str(keychain),'-P',os.environ['APPLE_CERTIFICATE_PASSWORD'],'-T','/usr/bin/codesign'])
-    run(['security','set-key-partition-list','-S','apple-tool:,apple:,codesign:','-s','-k',password,str(keychain)])
-    run(['codesign','--force','--timestamp','--options','runtime','--keychain',str(keychain),'--sign',os.environ['APPLE_SIGNING_IDENTITY'],str(target)])
-    run(['codesign','--verify','--strict',str(target)])
-   finally:subprocess.run(['security','delete-keychain',str(keychain)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+   sign_macos(target,tmp,os.environ['APPLE_SIGNING_IDENTITY'])
   if publish and platform=='windows':
    required('SSL_COM_USERNAME','SSL_COM_PASSWORD','SSL_COM_CREDENTIAL_ID','SSL_COM_TOTP_SECRET')
    archive=tmp/'sign.zip';download('https://ssl.com/wp-content/uploads/2024/10/CodeSignTool-v1.3.1-windows.zip','e45a9e6c2aac4cae16c114eb590a2196406681357eb587507c65cd3646b5330d',archive)
