@@ -14,9 +14,12 @@ SIGNING = (
 
 def validate(environ):
     recovery = environ.get("RECOVERY_RUN_ID", "")
+    configuration_only = environ.get("CONFIGURATION_ONLY") == "true"
+    if configuration_only and (recovery or environ.get("PUBLISH") == "true"):
+        raise ValueError("Configuration-only checks cannot publish or recover artifacts")
     if recovery and (not recovery.isdigit() or int(recovery) <= 0 or environ.get("PUBLISH") != "true"):
         raise ValueError("Recovery requires publish=true and a positive workflow run ID")
-    if environ.get("PUBLISH") != "true":
+    if environ.get("PUBLISH") != "true" and not configuration_only:
         return
     required = PUBLICATION if recovery else PUBLICATION + SIGNING
     missing = [name for name in required if not environ.get(name, "").strip()]

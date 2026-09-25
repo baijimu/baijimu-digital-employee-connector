@@ -101,6 +101,11 @@ class ReleaseArtifactsTest(unittest.TestCase):
         validate({"PUBLISH": "false"})
         configuration = {name: "present" for name in PUBLICATION + SIGNING}
         validate({**configuration, "PUBLISH": "true"})
+        validate({**configuration, "CONFIGURATION_ONLY": "true"})
+        with self.assertRaisesRegex(ValueError, "Missing release configuration"):
+            validate({"CONFIGURATION_ONLY": "true"})
+        with self.assertRaisesRegex(ValueError, "cannot publish"):
+            validate({**configuration, "CONFIGURATION_ONLY": "true", "PUBLISH": "true"})
         with self.assertRaisesRegex(ValueError, "APPLE_CERTIFICATE"):
             validate({**{name: "present" for name in PUBLICATION}, "PUBLISH": "true"})
         validate({**{name: "present" for name in PUBLICATION}, "PUBLISH": "true", "RECOVERY_RUN_ID": "123"})

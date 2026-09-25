@@ -16,6 +16,10 @@ on:
         description: Optional original publish run ID; reuse signed bytes without rebuilding
         type: string
         default: ""
+      configuration_only:
+        description: Check release configuration only; no packages or publication
+        type: boolean
+        default: false
 env:
   PYTHONUTF8: "1"
 permissions:
@@ -45,6 +49,7 @@ jobs:
       - name: Check release configuration before building
         env:
           PUBLISH: ${{ inputs.publish }}
+          CONFIGURATION_ONLY: ${{ inputs.configuration_only }}
           RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -67,7 +72,7 @@ jobs:
       - run: npm test
       - run: python3 -m unittest discover -s test -p 'test_*.py'
   package:
-    if: inputs.recovery_run_id == ''
+    if: inputs.recovery_run_id == '' && !inputs.configuration_only
     needs: validate
     strategy:
       fail-fast: false
