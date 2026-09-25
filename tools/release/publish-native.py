@@ -20,7 +20,13 @@ def github_release(repo,tag):
  headers,separator,body=result.stdout.replace('\r\n','\n').partition('\n\n')
  first=headers.splitlines()[0].split() if headers else []
  status=first[1] if len(first)>1 and first[0].startswith('HTTP/') else None
- if status=='404':return None
+ if status=='404':
+  # The tag endpoint omits draft releases, including drafts we just created.
+  listing=subprocess.run(['gh','api','--paginate','--slurp',f'repos/{repo}/releases?per_page=100'],capture_output=True,text=True)
+  if listing.returncode:raise RuntimeError('GitHub draft lookup failed; absence was not confirmed')
+  matches=[release for page in json.loads(listing.stdout) for release in page if release.get('tag_name')==tag]
+  if len(matches)>1:raise RuntimeError('Ambiguous GitHub release identity')
+  return matches[0] if matches else None
  if result.returncode or status!='200' or not separator:raise RuntimeError('GitHub release lookup failed; absence was not confirmed')
  return json.loads(body)
 
@@ -74,7 +80,7 @@ def main():
    else:run(['gh','release','upload',tag,str(path),'--repo',repo])
   run(['gh','release','edit',tag,'--repo',repo,'--draft=false','--latest=false'])
   os.environ['BAIJIMU_CLI']=str(cli);os.environ['MARKET_PUBLICATION_STATUS_FILE']=str(tmp/'publication-status')
-  run(['bash','tools/release/publish-market.sh',version,'connector.json',str(oss_path)])
+  run(['bash',str(Path(__file__).resolve().parent/'publish-market.sh'),version,'connector.json',str(oss_path)])
   status=(tmp/'publication-status').read_text(encoding="utf-8").strip()
   if status not in ['PENDING_REVIEW','PUBLISHED']:raise RuntimeError('Unexpected publication status')
   print('Source publication:',status)
