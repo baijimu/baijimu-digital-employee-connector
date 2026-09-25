@@ -1,6 +1,6 @@
 {
   "name": "@baijimu/digital-employee-connector",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "独立 app-server 数字员工 Connector",
   "type": "module",
   "bin": {
