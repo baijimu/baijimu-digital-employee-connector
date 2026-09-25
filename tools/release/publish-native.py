@@ -3,8 +3,9 @@
 Already-uploaded bytes must match; reruns never overwrite tags or release assets.
 If a signed rebuild differs, use the archived first-run artifacts for recovery.
 """
-import hashlib,json,os,subprocess,sys,tempfile,urllib.error,urllib.request,zipfile
+import hashlib,json,os,subprocess,sys,tempfile,urllib.error,urllib.parse,urllib.request,zipfile
 from pathlib import Path
+from artifact_contract import validate_artifacts
 def run(args,**kw):
  r=subprocess.run(args,**kw)
  if r.returncode:raise RuntimeError('Release operation failed: '+str(args[0]))
@@ -14,6 +15,14 @@ def get(url):
  except urllib.error.HTTPError as e:
   if e.code==404:return None
   raise
+def github_release(repo,tag):
+ result=subprocess.run(['gh','api','--include',f'repos/{repo}/releases/tags/{urllib.parse.quote(tag,safe="")}'],capture_output=True,text=True)
+ headers,separator,body=result.stdout.replace('\r\n','\n').partition('\n\n')
+ first=headers.splitlines()[0].split() if headers else []
+ status=first[1] if len(first)>1 and first[0].startswith('HTTP/') else None
+ if status=='404':return None
+ if result.returncode or status!='200' or not separator:raise RuntimeError('GitHub release lookup failed; absence was not confirmed')
+ return json.loads(body)
 
 def immutable_upload(tool,path,key):
  url=os.environ['OSS_PUBLIC_BASE'].rstrip('/')+'/'+key
@@ -31,12 +40,9 @@ def main():
   if not os.environ.get(name):raise RuntimeError('Missing release configuration: '+name)
  manifest=json.loads(Path('connector.json').read_text(encoding="utf-8"));version=manifest['version'];repo=manifest['source']['repo'];tag=manifest['source']['revision']
  if repo!=os.environ['GITHUB_REPOSITORY']:raise RuntimeError('Release repository mismatch')
- out=Path('release-output');rows=[json.loads((out/(p+'.json')).read_text(encoding="utf-8")) for p in ['macos','windows','linux']]
- for row in rows:
-  archive=out/row['name'];digest=hashlib.sha256(archive.read_bytes()).hexdigest()
-  if row['checksum']!='sha256:'+digest:raise RuntimeError('Artifact digest mismatch')
-  with zipfile.ZipFile(archive) as z:
-   if json.loads(z.read('connector.json'))!=manifest:raise RuntimeError('Packaged manifest mismatch')
+ out=Path('release-output')
+ commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+ rows=validate_artifacts(out,manifest,commit,os.environ.get('RECOVERY_RUN_ID') or os.environ['GITHUB_RUN_ID'])
  config=json.loads(Path('.github/release-tools.json').read_text(encoding="utf-8"))
  with tempfile.TemporaryDirectory() as tmp:
   tmp=Path(tmp)
@@ -53,14 +59,17 @@ def main():
    immutable_upload(tool,out/(row['name']+'.sha256'),prefix+'/'+row['checksum'].split(':')[1]+'/'+row['name']+'.sha256')
   oss={'schemaVersion':'2.0.0','appId':manifest['appId'],'releaseTag':tag,'version':version,'artifacts':rows}
   oss_path=out/(repo.split('/')[-1]+'-'+version+'-oss-manifest.json');oss_path.write_text(json.dumps(oss,sort_keys=True,indent=2)+'\n');immutable_upload(tool,oss_path,prefix+'/manifest.json')
-  status=subprocess.run(['gh','release','view',tag,'--repo',repo,'--json','tagName,isDraft'],capture_output=True,text=True)
-  if status.returncode:
+  release=github_release(repo,tag)
+  if release is None:
    run(['gh','release','create',tag,'--repo',repo,'--verify-tag','--draft','--title',manifest['name']+' '+version,'--notes','独立数字员工 Connector；签名制品与来源版本分开验证，市场提交仍需独立审核。'])
+   release=github_release(repo,tag)
+   if release is None:raise RuntimeError('Created GitHub release could not be read back')
+  assets={asset['name'] for asset in release['assets']}
   files=[oss_path,*[out/r['name'] for r in rows],*[out/(r['name']+'.sha256') for r in rows]]
   for path in files:
    download=tmp/'existing';download.mkdir(exist_ok=True)
-   result=subprocess.run(['gh','release','download',tag,'--repo',repo,'--pattern',path.name,'--dir',str(download)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-   if result.returncode==0:
+   if path.name in assets:
+    run(['gh','release','download',tag,'--repo',repo,'--pattern',path.name,'--dir',str(download)],stdout=subprocess.DEVNULL)
     if (download/path.name).read_bytes()!=path.read_bytes():raise RuntimeError('Immutable GitHub asset differs: '+path.name)
    else:run(['gh','release','upload',tag,str(path),'--repo',repo])
   run(['gh','release','edit',tag,'--repo',repo,'--draft=false','--latest=false'])

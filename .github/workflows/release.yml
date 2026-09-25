@@ -12,6 +12,10 @@ on:
         type: boolean
         default: false
         required: true
+      recovery_run_id:
+        description: Optional original publish run ID; reuse signed bytes without rebuilding
+        type: string
+        default: ""
 env:
   PYTHONUTF8: "1"
 permissions:
@@ -38,11 +42,32 @@ jobs:
           set -euo pipefail
           python3 tools/release/validate-source.py
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Check release configuration before building
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          SSL_COM_USERNAME: ${{ secrets.SSL_COM_USERNAME }}
+          SSL_COM_PASSWORD: ${{ secrets.SSL_COM_PASSWORD }}
+          SSL_COM_CREDENTIAL_ID: ${{ secrets.SSL_COM_CREDENTIAL_ID }}
+          SSL_COM_TOTP_SECRET: ${{ secrets.SSL_COM_TOTP_SECRET }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          LOCAL_APP_MARKET_PUBLISH_TOKEN: ${{ secrets.LOCAL_APP_MARKET_PUBLISH_TOKEN }}
+          LOCAL_APP_OWNER_WORKSPACE_ID: ${{ vars.LOCAL_APP_OWNER_WORKSPACE_ID }}
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.OSS_REGION }}
+          OSS_PUBLIC_BASE: ${{ vars.OSS_PUBLIC_BASE }}
+        run: python3 tools/release/preflight.py
       - run: cargo fmt --check
       - run: cargo test --locked
       - run: npm test
       - run: python3 -m unittest discover -s test -p 'test_*.py'
   package:
+    if: inputs.recovery_run_id == ''
     needs: validate
     strategy:
       fail-fast: false
@@ -81,25 +106,37 @@ jobs:
           name: employee-${{ matrix.platform }}
           path: release-output/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
   publish:
-    if: inputs.publish
+    if: >-
+      always() && inputs.publish && needs.validate.result == 'success' &&
+      (needs.package.result == 'success' ||
+      (inputs.recovery_run_id != '' && needs.package.result == 'skipped'))
     needs: [validate, package]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.validate.outputs.sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        if: inputs.recovery_run_id == ''
         with:
           pattern: employee-*
           path: release-output
           merge-multiple: true
+      - name: Recover original signed artifacts
+        if: inputs.recovery_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
+        run: python3 tools/release/recover-artifacts.py
       - name: Publish verified signed bytes to OSS and GitHub, then submit source version
         env:
           GH_TOKEN: ${{ github.token }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           LOCAL_APP_MARKET_PUBLISH_TOKEN: ${{ secrets.LOCAL_APP_MARKET_PUBLISH_TOKEN }}

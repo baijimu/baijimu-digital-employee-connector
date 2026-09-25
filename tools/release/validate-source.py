@@ -1,6 +1,6 @@
 import json, os, re, subprocess
 from pathlib import Path
-m=json.loads(Path('connector.json').read_text(encoding="utf-8")); p=json.loads(Path('package.json').read_text(encoding="utf-8")); c=json.loads(subprocess.check_output(['cargo','metadata','--no-deps','--format-version','1']))['packages'][0]
+m=json.loads(Path('connector.json').read_text(encoding="utf-8")); p=json.loads(Path('package.json').read_text(encoding="utf-8")); c=json.loads(subprocess.check_output(['cargo','metadata','--locked','--no-deps','--format-version','1']))['packages'][0]
 v=m['version']
 assert re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)',v)
 assert p['version']==c['version']==v

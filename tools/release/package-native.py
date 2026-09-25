@@ -51,6 +51,11 @@ def main():
     if f.is_file():z.write(f,f.relative_to(root))
   digest=hashlib.sha256(archive.read_bytes()).hexdigest();(out/(name+'.sha256')).write_text(digest+'  '+name+'\n')
   (out/(platform+'.json')).write_text(json.dumps({'platform':platform,'arch':arch,'name':name,'checksum':'sha256:'+digest}))
+  provenance={'schemaVersion':1,'repository':m['source']['repo'],'revision':m['source']['revision'],
+   'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+   'publish':publish,'platform':platform,'arch':arch,'name':name,'checksum':'sha256:'+digest,
+   'runId':os.environ.get('GITHUB_RUN_ID'),'runAttempt':os.environ.get('GITHUB_RUN_ATTEMPT')}
+  (out/('provenance-'+platform+'.json')).write_text(json.dumps(provenance,sort_keys=True)+'\n',encoding='utf-8')
 if __name__=='__main__':
  try:main()
  except Exception as e:print(type(e).__name__+': '+str(e),file=sys.stderr);sys.exit(1)

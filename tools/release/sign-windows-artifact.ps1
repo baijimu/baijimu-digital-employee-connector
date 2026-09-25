@@ -88,6 +88,10 @@ try {
     if (-not (Test-Path -LiteralPath $signedFile)) {
         throw "CodeSignTool did not produce the expected signed artifact"
     }
+    $signature = Get-AuthenticodeSignature -LiteralPath $signedFile
+    if ($signature.Status -ne "Valid" -or -not $signature.SignerCertificate -or -not $signature.TimeStamperCertificate) {
+        throw "Windows artifact must have a valid Authenticode signature and a trusted timestamp"
+    }
     Copy-Item -Force -LiteralPath $signedFile -Destination $replacementFile
     [System.IO.File]::Replace($replacementFile, $resolvedFile.Path, $unsignedBackupFile)
 } finally {
