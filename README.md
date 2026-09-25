@@ -1,4 +1,4 @@
-# Codex 数字员工连接器 1.0.0
+# Codex 数字员工连接器 1.0.1
 
 应用 ID 为 `digital-employee-connector`。独立托管 Codex app-server，通过私有 stdio 处理任务、轮次、审批和通知，不连接桌面 IPC、桌面 control socket 或共享 daemon。桌面退出不影响此运行时；Connector 停止时其 stdio 关闭，后台子进程随之结束。
 
@@ -26,7 +26,7 @@ Bridge Agent 分配的 `BAIJIMU_LOCAL_APP_DATA_DIR/runtime/codex` 是唯一 `COD
 
 发布仓库需配置 Secrets：`APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`SSL_COM_USERNAME`、`SSL_COM_PASSWORD`、`SSL_COM_CREDENTIAL_ID`、`SSL_COM_TOTP_SECRET`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、`LOCAL_APP_MARKET_PUBLISH_TOKEN`。Variables：`APPLE_SIGNING_IDENTITY`、`LOCAL_APP_OWNER_WORKSPACE_ID`、`OSS_BUCKET`、`OSS_ENDPOINT`、`OSS_REGION`、`OSS_PUBLIC_BASE`。值由签名、存储和来源应用各自所有者提供。
 
-先对 `main` 运行 `publish=false` 三平台演练，通过后从已验证主线提交创建 `v1.0.0`，再对该标签运行 `publish=true`。不可变制品发布中断时保留第一次成功的签名字节；不能用重新签名产生的不同字节覆盖同一版本。市场待审需独立审核，禁止作者自行批准。
+先对 `main` 运行 `publish=false` 三平台演练，通过后从已验证主线提交创建 `v1.0.1`，再对该标签运行 `publish=true`。不可变制品发布中断时保留第一次成功的签名字节；不能用重新签名产生的不同字节覆盖同一版本。市场待审需独立审核，禁止作者自行批准。
 
 首次发布版本也必须先获得当前用户对准确版本的确认。PR 和主线提交自动执行三平台源码验证，不生成发布制品。正式流水线在构建前检查签名、存储及来源发布配置是否齐全；配置存在不代表凭据有效，仍以签名与发布结果为准。Windows 成品必须通过 Authenticode 验签并带可信时间戳。
 
