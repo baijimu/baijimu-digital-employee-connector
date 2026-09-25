@@ -121,11 +121,29 @@ class ReleaseArtifactsTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "absence was not confirmed"):
                     native.github_release("owner/repo", "v1.0.0")
         response = subprocess.CompletedProcess([], 1, "HTTP/2.0 404 Not Found\r\n\r\n{}", "")
-        with patch.object(native.subprocess, "run", return_value=response):
+        with patch.object(native.subprocess, "run", side_effect=[response, subprocess.CompletedProcess([], 0, '[[]]', '')]):
             self.assertIsNone(native.github_release("owner/repo", "v1.0.0"))
         response = subprocess.CompletedProcess([], 0, 'HTTP/2.0 200 OK\n\n{"assets": []}', "")
         with patch.object(native.subprocess, "run", return_value=response):
             self.assertEqual(native.github_release("owner/repo", "v1.0.0"), {"assets": []})
+
+    def test_draft_release_is_found_across_pages_after_tag_endpoint_404(self):
+        missing = subprocess.CompletedProcess([], 1, "HTTP/2.0 404 Not Found\n\n{}", "")
+        draft = {"id": 123, "tag_name": "v1.0.1", "draft": True, "assets": []}
+        pages = [[{"tag_name": "v1.0.0"}], [draft]]
+        listing = subprocess.CompletedProcess([], 0, json.dumps(pages), "")
+        with patch.object(native.subprocess, "run", side_effect=[missing, listing]) as calls:
+            self.assertEqual(native.github_release("owner/repo", "v1.0.1"), draft)
+            self.assertIn('--paginate', calls.call_args.args[0])
+            self.assertIn('--slurp', calls.call_args.args[0])
+        denied = subprocess.CompletedProcess([], 1, '', 'private diagnostic')
+        with patch.object(native.subprocess, "run", side_effect=[missing, denied]):
+            with self.assertRaisesRegex(RuntimeError, "absence was not confirmed"):
+                native.github_release("owner/repo", "v1.0.1")
+        duplicated = subprocess.CompletedProcess([], 0, json.dumps([[draft, draft]]), '')
+        with patch.object(native.subprocess, "run", side_effect=[missing, duplicated]):
+            with self.assertRaisesRegex(RuntimeError, "Ambiguous"):
+                native.github_release("owner/repo", "v1.0.1")
 
 
 if __name__ == "__main__":

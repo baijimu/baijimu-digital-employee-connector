@@ -126,6 +126,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.validate.outputs.sha }}
+      - name: Require approved main workflow for recovery
+        if: inputs.recovery_run_id != ''
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: test "$WORKFLOW_REF" = "refs/heads/$DEFAULT_BRANCH"
+      - name: Load recovery tools from the immutable workflow commit
+        if: inputs.recovery_run_id != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tools
+          persist-credentials: false
+      - name: Verify recovery tools independently of the application tag
+        if: inputs.recovery_run_id != ''
+        working-directory: .release-tools
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "Recovery tooling commit: $GITHUB_SHA"
+          python3 -m unittest discover -s test -p 'test_*.py'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         if: inputs.recovery_run_id == ''
         with:
@@ -137,7 +157,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
-        run: python3 tools/release/recover-artifacts.py
+        run: python3 .release-tools/tools/release/recover-artifacts.py
       - name: Publish verified signed bytes to OSS and GitHub, then submit source version
         env:
           GH_TOKEN: ${{ github.token }}
@@ -150,4 +170,9 @@ jobs:
           OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
           OSS_REGION: ${{ vars.OSS_REGION }}
           OSS_PUBLIC_BASE: ${{ vars.OSS_PUBLIC_BASE }}
-        run: python3 tools/release/publish-native.py
+        run: |
+          if [ -n "$RECOVERY_RUN_ID" ]; then
+            python3 .release-tools/tools/release/publish-native.py
+          else
+            python3 tools/release/publish-native.py
+          fi
