@@ -1,12 +1,12 @@
 use crate::{
     connector_home, events, random_event_id, thread_state, timestamp,
-    DOMAIN_EVENT_PUBLISH_ATTEMPTS, DOMAIN_EVENT_RETRY_BASE_DELAY, MAX_EVENTS,
+    DOMAIN_EVENT_RETRY_BASE_DELAY, MAX_EVENTS,
 };
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::env;
 use std::fs;
-use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::Mutex;
 use std::thread;
 
@@ -40,7 +40,6 @@ struct PublishJob {
     event_id: String,
     occurred_at: String,
     payload: Value,
-    attempts: usize,
 }
 
 struct PublisherWorker {
@@ -165,7 +164,6 @@ impl EventPublisher {
                 "method": event.method,
                 "params": event.params,
             }),
-            attempts: 1,
         });
     }
 
@@ -175,21 +173,12 @@ impl EventPublisher {
             event_id: event.event_id,
             occurred_at: event.occurred_at,
             payload: event.payload,
-            attempts: DOMAIN_EVENT_PUBLISH_ATTEMPTS,
         });
     }
 
     fn enqueue(&self, job: PublishJob) {
-        let event_name = job.event_name;
-        match self.sender.try_send(job) {
-            Ok(()) => {}
-            Err(TrySendError::Full(_)) => {
-                eprintln!("event publish queue is full; dropped {event_name}")
-            }
-            Err(TrySendError::Disconnected(_)) => {
-                eprintln!("event publisher stopped; dropped {event_name}")
-            }
-        }
+        // Apply bounded backpressure until the host owns the event. Never discard on full.
+        self.sender.send(job).expect("event handoff worker stopped");
     }
 }
 
@@ -208,45 +197,37 @@ impl PublisherWorker {
             "payload": job.payload,
             "occurredAt": job.occurred_at,
         });
-        let attempts = job.attempts.max(1);
-        for attempt in 1..=attempts {
-            match self
+        let mut attempt = 0_u32;
+        loop {
+            let result = self
                 .client
                 .post(&self.endpoint)
                 .bearer_auth(&self.token)
+                .timeout(std::time::Duration::from_secs(10))
                 .json(&request)
-                .send()
-            {
-                Ok(response) if response.status().is_success() => return,
-                Ok(response) if !retryable_event_status(response.status().as_u16()) => {
-                    eprintln!(
-                        "failed to publish {}: bridge returned HTTP {}",
-                        job.event_name,
-                        response.status()
-                    );
-                    return;
-                }
-                Ok(response) if attempt == attempts => eprintln!(
-                    "failed to publish {} after {attempts} attempts: bridge returned HTTP {}",
-                    job.event_name,
-                    response.status()
-                ),
-                Err(error) if attempt == attempts => eprintln!(
-                    "failed to publish {} after {attempts} attempts: {error}",
-                    job.event_name
-                ),
-                Ok(_) | Err(_) => {}
+                .send();
+            let accepted = match result {
+                Ok(response) if response.status().is_success() => response
+                    .json::<relay::contracts::device_events::LocalEventAccepted>()
+                    .is_ok_and(|receipt| {
+                        receipt.event_id == job.event_id && receipt.app_id == self.app_id
+                    }),
+                Ok(_) | Err(_) => false,
+            };
+            if accepted {
+                return;
             }
-            if attempt < attempts {
-                let multiplier = 1_u32 << (attempt - 1).min(8);
-                thread::sleep(DOMAIN_EVENT_RETRY_BASE_DELAY * multiplier);
+            if attempt == 0 || attempt % 10 == 0 {
+                eprintln!(
+                    "event {} ({}) is awaiting durable Bridge acceptance; retained for retry",
+                    job.event_name, job.event_id
+                );
             }
+            let multiplier = 1_u32 << attempt.min(8);
+            thread::sleep(DOMAIN_EVENT_RETRY_BASE_DELAY * multiplier);
+            attempt = attempt.saturating_add(1);
         }
     }
-}
-
-pub(crate) fn retryable_event_status(status: u16) -> bool {
-    status == 408 || status == 429 || status >= 500
 }
 
 impl EventStore {
@@ -265,5 +246,76 @@ impl EventStore {
             publisher: EventPublisher::from_env(),
             stream_id: random_event_id(),
         }
+    }
+}
+
+#[cfg(test)]
+mod handoff_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    #[test]
+    fn retries_same_event_until_matching_typed_durable_acceptance() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/events", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let mut requests = Vec::new();
+            for response in [
+                (503, json!({"error":"capacity"})),
+                (202, json!({"accepted":true})),
+                (
+                    202,
+                    json!({"contractVersion":"2.0.0","eventId":"other","appId":"app","status":"queued"}),
+                ),
+                (
+                    202,
+                    json!({"contractVersion":"2.0.0","eventId":"stable","appId":"app","status":"queued"}),
+                ),
+            ] {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                let mut bytes = Vec::new();
+                let mut buf = [0_u8; 1024];
+                let body = loop {
+                    let n = stream.read(&mut buf).unwrap();
+                    assert!(n > 0);
+                    bytes.extend_from_slice(&buf[..n]);
+                    if let Some(start) = bytes.windows(4).position(|v| v == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&bytes[..start]);
+                        let length: usize = headers
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse().unwrap())
+                            })
+                            .unwrap();
+                        if bytes.len() >= start + 4 + length {
+                            break bytes[start + 4..start + 4 + length].to_vec();
+                        }
+                    }
+                };
+                requests.push(serde_json::from_slice::<Value>(&body).unwrap());
+                let body = response.1.to_string();
+                write!(stream,"HTTP/1.1 {} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.0,body.len(),body).unwrap();
+            }
+            requests
+        });
+        PublisherWorker {
+            app_id: "app".into(),
+            endpoint,
+            token: "test".into(),
+            client: reqwest::blocking::Client::new(),
+        }
+        .publish(PublishJob {
+            event_name: "codexNotification",
+            event_id: "stable".into(),
+            occurred_at: "time".into(),
+            payload: json!({"text":"event"}),
+        });
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 4);
+        assert!(requests.iter().all(|request| request == &requests[0]));
     }
 }

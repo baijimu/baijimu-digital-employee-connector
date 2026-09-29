@@ -202,7 +202,6 @@ const DEFAULT_PROJECT_THREAD_MAX_PAGES: usize = 100;
 const MAX_THREAD_LIST_PAGES: usize = 100;
 const DEFAULT_THREAD_SORT_KEY: &str = "updated_at";
 const DEFAULT_THREAD_SORT_DIRECTION: &str = "desc";
-const DOMAIN_EVENT_PUBLISH_ATTEMPTS: usize = 5;
 const DOMAIN_EVENT_RETRY_BASE_DELAY: Duration = Duration::from_millis(100);
 fn configured_port() -> u16 {
     serde_json::from_str::<Value>(include_str!("../connector.json")).expect("valid manifest")

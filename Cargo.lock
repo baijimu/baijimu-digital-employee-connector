@@ -16,11 +16,12 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "baijimu-digital-employee-connector"
-version = "1.0.1"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "libc",
  "rand 0.8.7",
+ "relay",
  "reqwest",
  "semver",
  "serde",
@@ -679,6 +680,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a"
 dependencies = [
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "relay"
+version = "0.10.0"
+source = "git+https://gitee.com/zxflimit/relay.git?rev=ca7cfc8c291cf438d046688521c43b5c3ed0733a#ca7cfc8c291cf438d046688521c43b5c3ed0733a"
+dependencies = [
+ "semver",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
