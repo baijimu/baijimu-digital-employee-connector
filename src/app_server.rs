@@ -399,10 +399,6 @@ impl CodexClient {
         self.events.recent(body)
     }
 
-    pub(crate) fn record_event(&self, method: &str, params: Value) {
-        self.events.push(method, params);
-    }
-
     pub(crate) fn shutdown(&self) {
         if let Ok(_lifecycle) = self.lifecycle.lock() {
             self.shutdown_locked();

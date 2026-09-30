@@ -1,6 +1,7 @@
 mod app_server;
 mod codex_binary;
 mod events;
+mod history;
 mod invoke;
 mod invoke_dispatch;
 mod thread_state;

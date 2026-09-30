@@ -97,6 +97,7 @@ pub(crate) fn handle_invoke(
         }
         "/invoke/startThread" => {
             let mut params = merge_params(body, &[]);
+            crate::history::configure_new_thread(&mut params)?;
             if let Some(model) = body.get("model").cloned() {
                 params["model"] = model;
             }
@@ -241,28 +242,9 @@ fn list_thread_turns(body: &Value, client: &CodexClient) -> Result<Value, HttpEr
         &["threadId", "cursor", "limit", "sortDirection", "itemsView"],
     );
     params["threadId"] = Value::String(thread_id.clone());
-    match client.request("thread/turns/list", params, timeout_ms(body)) {
-        Ok(result) => Ok(json!({"result": result})),
-        Err(error) => {
-            client.record_event(
-                "connector/threadTurnsListFallback",
-                json!({"threadId": thread_id, "error": error.message, "code": error.code}),
-            );
-            let result = client.request(
-                "thread/read",
-                json!({"threadId": thread_id, "includeTurns": true}),
-                timeout_ms(body),
-            )?;
-            let turns = result
-                .pointer("/thread/turns")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            Ok(
-                json!({"result": {"data": turns, "nextCursor": null, "backwardsCursor": null, "fallback": "thread/read"}}),
-            )
-        }
-    }
+    crate::history::list_turns(&thread_id, params, |params| {
+        client.request("thread/turns/list", params, timeout_ms(body))
+    })
 }
 
 fn list_projects(body: &Value, client: &CodexClient) -> Result<Value, HttpError> {
