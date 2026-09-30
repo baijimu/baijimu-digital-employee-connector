@@ -208,10 +208,8 @@ impl PublisherWorker {
                 .send();
             let accepted = match result {
                 Ok(response) if response.status().is_success() => response
-                    .json::<relay::contracts::device_events::LocalEventAccepted>()
-                    .is_ok_and(|receipt| {
-                        receipt.event_id == job.event_id && receipt.app_id == self.app_id
-                    }),
+                    .json::<super::host_receipt::HostEventReceipt>()
+                    .is_ok_and(|receipt| receipt.accepts(&self.app_id, &job.event_id)),
                 Ok(_) | Err(_) => false,
             };
             if accepted {

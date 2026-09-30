@@ -53,3 +53,9 @@ python3 tools/smoke-runtime.py --connector target/debug/baijimu-digital-employee
 该检查使用临时应用数据目录，验证 HTTP 鉴权、工作区上下文、独立 app-server 初始化、空登录态、任务创建与读取，以及 Unix 子进程退出。它不登录账号、不发起模型轮次；发布验收仍需在宿主安装后，以员工独立授权完成一次任务、审批和事件回传。
 
 发布机访问 OSS 的传输地址与公开制品身份分开配置：`OSS_ENDPOINT` 用于上传；`OSS_DOWNLOAD_BASE` 用于发布工具和制品的 OSS 下载回读，可配置为已启用的 Bucket 传输加速入口。`OSS_PUBLIC_BASE` 继续写入公开 manifest，恢复发布不得改变它或既有制品字节。只有严格匹配公开地址前缀的无签名 URL 才转换下载入口，外部工具来源不转换。下载日志记录地址、字节数和耗时，并隐藏查询参数与用户信息。
+
+## 事件交接边界
+
+Connector 通过宿主 HTTP 接口交接事件；`HostEventReceipt` 是客户端对宿主确认的类型化投影，不编译依赖 Relay 服务实现。仅接受 `contractVersion: 2.0.0`、匹配的应用与事件 ID，以及 `queued` 或 `no_subscribers` 状态；其他响应保持原事件等待重试。
+
+`test/fixtures/host-event-receipts.json` 与 Bridge Agent 的同名协议样例一致：宿主测试实际序列化结果，Connector 测试消费结果。宿主最小版本及能力要求仍由 `connector.json` 声明。

@@ -1,0 +1,4 @@
+[
+  {"contractVersion":"2.0.0","eventId":"stable","appId":"app","status":"queued"},
+  {"contractVersion":"2.0.0","eventId":"stable","appId":"app","status":"no_subscribers"}
+]

@@ -1,4 +1,5 @@
 mod event_store;
+mod host_receipt;
 mod server_requests;
 
 use crate::{child_process, codex_binary, timestamp, HttpError, ServerOptions, VERSION};
