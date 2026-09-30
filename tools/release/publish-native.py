@@ -51,6 +51,10 @@ def immutable_upload(tool,path,key):
   if get(url)!=content:raise RuntimeError('OSS readback failed: '+path.name)
  return url
 
+def load_tool_config():
+ # Recovery runs application metadata from the tag, but tools from approved main.
+ return json.loads((Path(__file__).resolve().parents[2]/'.github/release-tools.json').read_text(encoding="utf-8"))
+
 def main():
  names=['OSS_ACCESS_KEY_ID','OSS_ACCESS_KEY_SECRET','OSS_BUCKET','OSS_ENDPOINT','OSS_REGION','OSS_PUBLIC_BASE','LOCAL_APP_MARKET_PUBLISH_TOKEN','LOCAL_APP_OWNER_WORKSPACE_ID','GITHUB_REPOSITORY']
  for name in names:
@@ -60,7 +64,7 @@ def main():
  out=Path('release-output')
  commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
  rows=validate_artifacts(out,manifest,commit,os.environ.get('RECOVERY_RUN_ID') or os.environ['GITHUB_RUN_ID'])
- config=json.loads(Path('.github/release-tools.json').read_text(encoding="utf-8"))
+ config=load_tool_config()
  with tempfile.TemporaryDirectory() as tmp:
   tmp=Path(tmp)
   for key in ['ossutil','baijimu']:

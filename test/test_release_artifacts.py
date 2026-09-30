@@ -1,6 +1,7 @@
 import importlib.util
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 import subprocess
@@ -52,6 +53,18 @@ class ReleaseArtifactsTest(unittest.TestCase):
 
     def check(self):
         return validate_artifacts(self.directory, self.manifest, "fixture-sha", "123")
+
+    def test_recovery_dependencies_belong_to_tool_checkout_not_application_tag(self):
+        tagged_app = self.directory / "tagged-app"
+        (tagged_app / ".github").mkdir(parents=True)
+        (tagged_app / ".github/release-tools.json").write_text('{"baijimu": {"url": "obsolete-cli"}}')
+        original = Path.cwd()
+        try:
+            os.chdir(tagged_app)
+            expected = json.loads((ROOT / ".github/release-tools.json").read_text())
+            self.assertEqual(native.load_tool_config(), expected)
+        finally:
+            os.chdir(original)
 
     def test_complete_original_build_is_recoverable(self):
         self.assertEqual(self.check(), self.rows)
