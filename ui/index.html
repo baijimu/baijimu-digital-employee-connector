@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>员工管理</title>
+  <link rel="stylesheet" href="./management.css">
+  <script type="module" src="./management.js"></script>
+</head>
+<body>
+  <main>
+    <div id="notice" role="status" aria-live="polite">正在读取员工配置…</div>
+    <section aria-labelledby="employee-title">
+      <div class="section-heading"><h2 id="employee-title">员工资料</h2><span id="registration-status">未读取</span></div>
+      <p>先在这台电脑上注册员工，再授权工作区调用。首期支持本地 Codex。</p>
+      <form id="employee-form">
+        <fieldset id="employee-fields" disabled>
+          <label>员工名称<input name="name" required maxlength="128" autocomplete="off"></label>
+          <label>简介<textarea name="description" maxlength="2048" rows="3"></textarea></label>
+          <label class="checkbox"><input name="enabled" type="checkbox" checked>允许已授权工作区调用</label>
+          <button type="submit" id="save-employee">注册员工</button>
+        </fieldset>
+      </form>
+    </section>
+    <section aria-labelledby="account-title">
+      <h2 id="account-title">Codex 账号</h2>
+      <p>账号保存在这个员工的独立目录中。</p>
+      <p id="account-status">尚未读取账号</p>
+      <div class="actions"><button type="button" data-operation="accountRead">读取账号</button><button type="button" data-operation="accountLogin">登录 ChatGPT</button><button type="button" data-operation="accountLogout">退出账号</button></div>
+      <div id="login-result" hidden><label>登录地址<input id="login-url" readonly></label><p>复制地址到本机浏览器完成登录，然后读取账号。</p></div>
+    </section>
+    <section aria-labelledby="execution-title">
+      <h2 id="execution-title">本地工作目录</h2>
+      <p>模型与系统提示由平台智能体配置管理。这里设置这台电脑上的工作目录。</p>
+      <form id="execution-form">
+        <fieldset id="execution-fields" disabled>
+          <label>工作目录<input name="workingDirectory" required autocomplete="off" placeholder="选择这台电脑上的绝对路径"></label>
+          <button type="submit">保存目录</button>
+        </fieldset>
+      </form>
+    </section>
+    <section aria-labelledby="authorization-title">
+      <h2 id="authorization-title">工作区授权</h2>
+      <p>只有勾选的工作区可以查看和调用。工作区内的用户仍需拥有平台设备方法与会话权限。</p>
+      <form id="authorization-form">
+        <fieldset id="authorization-fields" disabled>
+          <button type="button" data-operation="employeeWorkspaces">读取可授权工作区</button>
+          <div id="workspaces" class="workspace-list">尚未读取工作区</div>
+          <button type="submit">保存授权</button>
+        </fieldset>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

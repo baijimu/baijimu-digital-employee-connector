@@ -23,12 +23,17 @@ def main():
         state = root / "state"
         cwd = root / "project"
         cwd.mkdir()
+        cwd = cwd.resolve()
         with socket.socket() as reservation:
             reservation.bind(("127.0.0.1", 0))
             port = reservation.getsockname()[1]
         environment = {k: v for k, v in os.environ.items()
                        if not k.upper().startswith(("BAIJIMU_", "DIGITAL_EMPLOYEE_"))}
         environment.update(BAIJIMU_LOCAL_APP_DATA_DIR=str(state), DIGITAL_EMPLOYEE_CODEX_BINARY=codex)
+        cli_fixture = root / "baijimu-fixture"
+        cli_fixture.write_text('#!/usr/bin/env python3\nimport json\nprint(json.dumps({"errorCode":"0","data":{"list":[{"id":1,"name":"Fixture workspace"}],"totalPages":1}}))\n')
+        cli_fixture.chmod(0o700)
+        environment["DIGITAL_EMPLOYEE_CONNECTOR_BAIJIMU_BINARY"] = str(cli_fixture)
         token = None
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -69,21 +74,37 @@ def main():
                 token = (state / "management-token").read_text().strip()
                 assert request("/invoke/status", {}, authorized=False)[0] == 401
                 assert request("/invoke/status", {}, workspace=False)[0] == 400
-                status, account = request("/invoke/request", {"method": "account/read", "params": {"refreshToken": False}})
+                assert request("/invoke/status", {})[0] == 403
+                assert request("/management/employee")[1]["data"]["employee"] is None
+                assert request("/management/employee/register", {"name":"Fixture employee","description":"Test","enabled":True})[0] == 200
+                status, account = request("/management/account/read")
                 assert status == 200, account
-                assert account["data"]["result"]["account"] is None, "Fresh employee inherited a login"
+                assert account["data"]["account"] is None, "Fresh employee inherited a login"
+                assert request("/management/employee/configure", {"workingDirectory":str(cwd),"model":"not-local"})[0] == 400
+                assert request("/management/employee/configure", {"workingDirectory":str(cwd)})[0] == 200
+                assert request("/invoke/employeeProfile", {})[0] == 403
+                assert request("/management/employee/authorize", {"authorizedWorkspaceIds":[1]})[0] == 200
+                assert request("/invoke/employeeProfile", {})[1]["data"]["workingDirectory"] == str(cwd)
+                assert request("/invoke/request", {"method":"account/logout"})[0] == 404
+                assert request("/invoke/startThread", {"params":{"sandbox":"danger-full-access"}})[0] == 400
                 status, runtime = request("/invoke/status", {})
                 app = runtime["data"]["appServer"]
                 child_pid = app["pid"]
                 assert status == 200 and app["running"] and app["initialized"] and not app["shared"]
                 assert Path(app["codexHome"]).resolve() == (state / "runtime/codex").resolve()
-                status, created = request("/invoke/startThread", {"cwd": str(cwd),
-                    "params": {"approvalPolicy": "never", "sandbox": "read-only"}})
+                status, created = request("/invoke/startThread", {})
                 assert status == 200, created
+                platform_model = created["data"]["result"]["model"]
+                status, configured = request("/invoke/startThread", {"params":{"cwd":str(cwd),"model":platform_model}})
+                assert status == 200 and configured["data"]["result"]["model"] == platform_model, configured
+                assert "model" not in json.loads((state / "employee.json").read_text())
                 task = created["data"]["result"]["thread"]["id"]
                 status, read = request("/invoke/readThread", {"threadId": task})
                 assert status == 200 and read["data"]["result"]["thread"]["id"] == task, read
-                print("PASS: HTTP authorization, workspace context, private app-server, isolated account, thread start/read")
+                assert request("/management/employee/authorize", {"authorizedWorkspaceIds":[]})[0] == 200
+                assert request("/invoke/readThread", {"threadId": task})[0] == 403
+                assert json.loads((state / "employee.json").read_text())["authorizedWorkspaceIds"] == []
+                print("PASS: registration, local configuration, grants/revocation, raw RPC denial, private account, thread start/read")
             finally:
                 process.terminate()
                 try:

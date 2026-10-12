@@ -2,7 +2,7 @@
   "schemaVersion": "3.0.0",
   "appId": "digital-employee-connector",
   "name": "Codex 数字员工连接器",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "托管独立 Codex app-server，使用专属会话、配置和凭据目录运行数字员工。",
   "icon": {
     "mediaType": "image/png",
@@ -15,7 +15,7 @@
   "source": {
     "type": "github",
     "repo": "baijimu/baijimu-digital-employee-connector",
-    "revision": "v2.0.1"
+    "revision": "v3.0.0"
   },
   "runtime": {
     "type": "process",
@@ -52,6 +52,42 @@
       "checkoutPlatformProject": {
         "method": "POST",
         "path": "/management/v1/projects/checkout"
+      },
+      "accountRead": {
+        "method": "GET",
+        "path": "/management/account/read"
+      },
+      "accountLogin": {
+        "method": "POST",
+        "path": "/management/account/login"
+      },
+      "accountLogout": {
+        "method": "POST",
+        "path": "/management/account/logout"
+      },
+      "employeeState": {
+        "method": "GET",
+        "path": "/management/employee"
+      },
+      "employeeWorkspaces": {
+        "method": "GET",
+        "path": "/management/workspaces"
+      },
+      "employeeRegister": {
+        "method": "POST",
+        "path": "/management/employee/register"
+      },
+      "employeeUpdate": {
+        "method": "POST",
+        "path": "/management/employee/update"
+      },
+      "employeeConfigure": {
+        "method": "POST",
+        "path": "/management/employee/configure"
+      },
+      "employeeAuthorize": {
+        "method": "POST",
+        "path": "/management/employee/authorize"
       }
     }
   },
@@ -118,19 +154,9 @@
       "description": "向数字员工 Codex 发送提示词和引导指令。"
     },
     {
-      "name": "codex.raw.request",
-      "risk": "high",
-      "description": "向数字员工 Codex app-server 转发高级 JSON-RPC 请求。"
-    },
-    {
       "name": "codex.turn.interrupt",
       "risk": "medium",
       "description": "中断正在执行的 Codex 轮次。"
-    },
-    {
-      "name": "codex.project.write",
-      "risk": "high",
-      "description": "在指定设备目录新建本地项目，或通过平台 CLI 检出当前授权工作区项目。"
     }
   ],
   "transport": {
@@ -138,6 +164,17 @@
     "baseUrl": "http://127.0.0.1:18112"
   },
   "methods": [
+    {
+      "name": "employeeProfile",
+      "description": "查看本地登记且授权当前工作区的 Codex 员工及只读执行配置。",
+      "path": "/invoke/employeeProfile",
+      "httpMethod": "POST",
+      "timeoutSecs": 5,
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
     {
       "name": "status",
       "description": "返回连接器和 Codex app-server 的连接状态。",
@@ -228,7 +265,77 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "sortKey": {
+                "type": "string",
+                "enum": [
+                  "created_at",
+                  "updated_at"
+                ]
+              },
+              "sortDirection": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ]
+              },
+              "modelProviders": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sourceKinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "cli",
+                    "vscode",
+                    "exec",
+                    "appServer",
+                    "subAgent",
+                    "subAgentReview",
+                    "subAgentCompact",
+                    "subAgentThreadSpawn",
+                    "subAgentOther",
+                    "unknown"
+                  ]
+                }
+              },
+              "archived": {
+                "type": "boolean"
+              },
+              "cwd": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "useStateDbOnly": {
+                "type": "boolean"
+              },
+              "searchTerm": {
+                "type": "string"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -287,7 +394,51 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "searchTerm": {
+                "type": "string"
+              },
+              "existsOnly": {
+                "type": "boolean"
+              },
+              "includeSaved": {
+                "type": "boolean"
+              },
+              "includeTrusted": {
+                "type": "boolean"
+              },
+              "includeThreadStats": {
+                "type": "boolean"
+              },
+              "threadCursor": {
+                "type": "string"
+              },
+              "threadPageLimit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "maxThreadPages": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "archived": {
+                "type": "boolean"
+              },
+              "useStateDbOnly": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -372,7 +523,77 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "sortKey": {
+                "type": "string",
+                "enum": [
+                  "created_at",
+                  "updated_at"
+                ]
+              },
+              "sortDirection": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ]
+              },
+              "modelProviders": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sourceKinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "cli",
+                    "vscode",
+                    "exec",
+                    "appServer",
+                    "subAgent",
+                    "subAgentReview",
+                    "subAgentCompact",
+                    "subAgentThreadSpawn",
+                    "subAgentOther",
+                    "unknown"
+                  ]
+                }
+              },
+              "archived": {
+                "type": "boolean"
+              },
+              "cwd": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "useStateDbOnly": {
+                "type": "boolean"
+              },
+              "searchTerm": {
+                "type": "string"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -438,7 +659,55 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "searchTerm": {
+                "type": "string"
+              },
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "sortKey": {
+                "type": "string",
+                "enum": [
+                  "created_at",
+                  "updated_at"
+                ]
+              },
+              "sortDirection": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ]
+              },
+              "sourceKinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "cli",
+                    "vscode",
+                    "exec",
+                    "appServer",
+                    "subAgent",
+                    "subAgentReview",
+                    "subAgentCompact",
+                    "subAgentThreadSpawn",
+                    "subAgentOther",
+                    "unknown"
+                  ]
+                }
+              },
+              "archived": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -464,7 +733,15 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "threadId": {
+                "type": "string"
+              },
+              "includeTurns": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -544,7 +821,38 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "threadId": {
+                "type": "string"
+              },
+              "cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "sortDirection": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ]
+              },
+              "itemsView": {
+                "type": "string",
+                "enum": [
+                  "notLoaded",
+                  "summary",
+                  "full"
+                ]
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -575,7 +883,23 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "threadId": {
+                "type": "string"
+              },
+              "forceRefetch": {
+                "type": "boolean"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -598,7 +922,15 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -650,7 +982,15 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -681,7 +1021,44 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "collaborationMode": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "default"
+                    ]
+                  },
+                  "settings": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "model": {
+                        "type": "string"
+                      },
+                      "developer_instructions": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "developer_instructions"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "settings"
+                ]
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -708,7 +1085,16 @@
           "input": {},
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "threadId": {
+                "type": "string"
+              },
+              "turnId": {
+                "type": "string"
+              },
+              "input": {}
+            }
           }
         },
         "additionalProperties": false
@@ -731,7 +1117,15 @@
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": false,
+            "properties": {
+              "threadId": {
+                "type": "string"
+              },
+              "turnId": {
+                "type": "string"
+              }
+            }
           }
         },
         "additionalProperties": false
@@ -761,36 +1155,8 @@
       }
     },
     {
-      "name": "request",
-      "description": "向本地 Codex app-server 转发原始 JSON-RPC 请求。",
-      "path": "/invoke/request",
-      "httpMethod": "POST",
-      "timeoutSecs": 60,
-      "input_schema": {
-        "type": "object",
-        "required": [
-          "method"
-        ],
-        "properties": {
-          "method": {
-            "type": "string"
-          },
-          "params": {
-            "type": "object",
-            "additionalProperties": true
-          },
-          "timeoutMs": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 600000
-          }
-        },
-        "additionalProperties": false
-      }
-    },
-    {
       "name": "prepareProject",
-      "description": "验证已有本地目录、新建本地项目目录，或检出当前授权工作区项目；返回设备上的实际目录。",
+      "description": "确认本地员工已配置的工作目录；远端不能创建目录或检出项目。",
       "path": "/invoke/prepareProject",
       "httpMethod": "POST",
       "timeoutSecs": 120,
@@ -809,43 +1175,6 @@
             "required": [
               "type",
               "directory"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "const": "NEW_LOCAL_DIRECTORY"
-              },
-              "parent": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "type",
-              "parent",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "const": "WORKSPACE_PROJECT"
-              },
-              "projectId": {
-                "type": "integer",
-                "minimum": 1
-              }
-            },
-            "required": [
-              "type",
-              "projectId"
             ],
             "additionalProperties": false
           }
@@ -1193,5 +1522,11 @@
         "additionalProperties": false
       }
     }
-  ]
+  ],
+  "ui": {
+    "type": "embedded",
+    "entry": "ui/index.html",
+    "title": "管理",
+    "defaultView": true
+  }
 }

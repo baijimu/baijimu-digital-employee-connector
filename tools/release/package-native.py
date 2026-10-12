@@ -38,6 +38,12 @@ def main():
    run(['pwsh','-NoProfile','-File','tools/release/sign-windows-artifact.ps1','-FilePath',str(target)])
   if subprocess.check_output([str(target),'--version']).decode().strip()!=m['version']:raise RuntimeError('Binary version mismatch')
   for name in ['connector.json','README.md','LICENSE']:shutil.copy2(name,root/name)
+  shutil.copytree('docs',root/'docs')
+  if 'ui' in m:
+   entry=Path(m['ui']['entry'])
+   if entry.is_absolute() or '..' in entry.parts or len(entry.parts)<2:raise RuntimeError('Invalid embedded UI entry')
+   if not entry.is_file():raise RuntimeError('Embedded UI entry is missing')
+   shutil.copytree(entry.parent,root/entry.parent)
   out=Path('release-output');out.mkdir(exist_ok=True);name=m['source']['repo'].split('/')[-1]+'-'+m['version']+'-'+platform+'-'+arch+'.zip';archive=out/name
   with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
    for f in sorted(root.rglob('*')):

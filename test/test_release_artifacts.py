@@ -37,6 +37,9 @@ class ReleaseArtifactsTest(unittest.TestCase):
             with zipfile.ZipFile(self.directory / name, "w") as archive:
                 archive.writestr("connector.json", json.dumps(self.manifest))
                 archive.writestr(binary, b"fixture executable")
+                for asset in (ROOT / 'ui').rglob('*'):
+                    if asset.is_file():
+                        archive.write(asset, asset.relative_to(ROOT))
             digest = hashlib.sha256((self.directory / name).read_bytes()).hexdigest()
             row = {"name": name, "platform": platform, "arch": architecture, "checksum": "sha256:" + digest}
             self.rows.append(row)
@@ -53,6 +56,16 @@ class ReleaseArtifactsTest(unittest.TestCase):
 
     def check(self):
         return validate_artifacts(self.directory, self.manifest, "fixture-sha", "123")
+
+    def test_embedded_ui_requires_its_declared_script_and_stylesheet(self):
+        from artifact_contract import validate_ui
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = Path(directory) / 'missing-ui-asset.zip'
+            with zipfile.ZipFile(archive_path, 'w') as package:
+                package.writestr(self.manifest['ui']['entry'], '<script src="management.js"></script>')
+            with zipfile.ZipFile(archive_path) as package:
+                with self.assertRaises(KeyError):
+                    validate_ui(package, self.manifest)
 
     def test_recovery_dependencies_belong_to_tool_checkout_not_application_tag(self):
         tagged_app = self.directory / "tagged-app"

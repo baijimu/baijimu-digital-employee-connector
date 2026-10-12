@@ -3,8 +3,38 @@ import hashlib
 import json
 import zipfile
 from pathlib import Path
+from html.parser import HTMLParser
+from pathlib import PurePosixPath
 
 TARGETS = {"macos": "universal", "windows": "x86_64", "linux": "x86_64"}
+
+
+class UiAssets(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.paths = []
+
+    def handle_starttag(self, tag, attributes):
+        attributes = dict(attributes)
+        key = 'href' if tag == 'link' else 'src' if tag in ('script', 'img') else None
+        if key and key in attributes:
+            self.paths.append(attributes[key])
+
+
+def validate_ui(package, manifest):
+    if 'ui' not in manifest:
+        return
+    entry = PurePosixPath(manifest['ui']['entry'])
+    if entry.is_absolute() or '..' in entry.parts or len(entry.parts) < 2:
+        raise ValueError('Invalid embedded UI entry')
+    parser = UiAssets()
+    parser.feed(package.read(str(entry)).decode('utf-8'))
+    for value in parser.paths:
+        asset = PurePosixPath(value)
+        if asset.is_absolute() or '..' in asset.parts or ':' in value:
+            raise ValueError('Embedded UI asset must stay inside its UI directory')
+        if package.getinfo(str(entry.parent / asset)).file_size == 0:
+            raise ValueError('Empty embedded UI asset')
 
 
 def validate_artifacts(directory, manifest, commit, run_id):
@@ -36,6 +66,7 @@ def validate_artifacts(directory, manifest, commit, run_id):
                 raise ValueError("Duplicate archive entries: " + platform)
             if json.loads(package.read("connector.json")) != manifest:
                 raise ValueError("Packaged manifest mismatch: " + platform)
+            validate_ui(package, manifest)
             folder = "macos" if platform == "macos" else platform + "-" + architecture
             binary = "bin/" + folder + "/" + manifest["runtime"]["command"]
             if platform == "windows":

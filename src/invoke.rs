@@ -184,16 +184,6 @@ pub(crate) fn handle_invoke(
             Ok(json!({"result":client.pending_server_requests(&thread)?}))
         }
         "/invoke/recentEvents" => Ok(client.recent_events(body)),
-        "/invoke/request" => {
-            let Some(method) = string_field(body, "method") else {
-                return Err(HttpError::new(400, "method is required"));
-            };
-            let params = body.get("params").cloned().unwrap_or_else(|| json!({}));
-            Ok(json!({
-                "result": client.request(&method, params, timeout_ms(body))?,
-                "recentEvents": client.recent_events(&json!({"limit": 50})),
-            }))
-        }
         _ => Err(HttpError::new(404, format!("unknown invoke path: {path}"))),
     }
 }

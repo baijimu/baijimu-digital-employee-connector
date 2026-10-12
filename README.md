@@ -1,4 +1,4 @@
-# Codex 数字员工连接器 1.0.1
+# Codex 数字员工连接器 3.0.0
 
 应用 ID 为 `digital-employee-connector`。独立托管 Codex app-server，通过私有 stdio 处理任务、轮次、审批和通知，不连接桌面 IPC、桌面 control socket 或共享 daemon。桌面退出不影响此运行时；Connector 停止时其 stdio 关闭，后台子进程随之结束。
 
@@ -8,13 +8,19 @@ Bridge Agent 分配的 `BAIJIMU_LOCAL_APP_DATA_DIR/runtime/codex` 是唯一 `COD
 
 连接器从 `DIGITAL_EMPLOYEE_CODEX_BINARY` 读取运维明确配置的 Codex CLI 路径，未设置则执行 PATH 中的 `codex`。安装环境必须预先提供兼容 CLI（版本要求由代码中的协议下限声明）；此 Connector 不安装或更新用户桌面 CLI。
 
-子进程不继承桌面的 `CODEX_HOME`、`OPENAI_API_KEY`、`CODEX_API_KEY` 和 Bridge 令牌环境变量，强制使用独立目录的文件式凭据存储，不复用系统钥匙串登录态。数字员工需要单独授权：经已授权的 `request` 方法调用 app-server `account/login/start`，并按其返回的登录流程完成认证；用 `account/read` 核实。本机 CLI 也可在明确指定本应用 `CODEX_HOME` 和 `cli_auth_credentials_store="file"` 后登录。
+子进程不继承桌面的 `CODEX_HOME`、`OPENAI_API_KEY`、`CODEX_API_KEY` 和 Bridge 令牌环境变量，强制使用独立目录的文件式凭据存储，不复用系统钥匙串登录态。数字员工需要单独授权：在客户端的本应用“管理”页登录 ChatGPT。账号读取、登录与退出仅通过本地 management 操作开放，远端没有原始 RPC 入口。
 
 这是会话、配置和凭据隔离，**不是操作系统用户或文件系统沙箱隔离**。需要多租户安全隔离时，应在不同 OS 用户或容器中分别部署 Connector，并按员工权限配置 app-server 沙箱与审批。
 
 ## 接口
 
-`connector.json` 是方法、权限、事件和默认端口的唯一清单。HTTP 只绑定 loopback，需要宿主 Connector token 和可信工作区 Header。保留 `startThread`、`resumeThread`、`startTurn`、`steerTurn`、`interruptTurn`、`pendingRequests`、`respondToRequest`、`request`、任务查询与项目准备方法。
+`connector.json` 是方法、权限、事件和默认端口的唯一清单。HTTP 只绑定 loopback，需要宿主 Connector token 和可信工作区 Header。远端提供员工资料、任务查询、创建与恢复线程、发送与引导任务、中断以及审批；不开放原始 RPC 和员工配置写入。
+
+在客户端本应用的“管理”页注册员工、登录 Codex、设置本地工作目录，再勾选可调用工作区。所有远端方法同时受本地授权与平台设备方法权限限制。停用或撤销工作区授权后，后续调用会被拒绝。升级保留员工配置与账号；不要通过删除数据目录执行升级。
+
+模型、系统提示和其他 AgentConfig 字段继续由平台智能体配置提供，不保存在本地员工配置中。
+
+完整状态归属、并发、失败恢复与发布边界见 [员工职责说明](docs/employee-ownership.md)。
 
 默认端口来自清单，与桌面 Connector 独立；可用 `--port` 或 `DIGITAL_EMPLOYEE_CONNECTOR_PORT` 配置。桌面任务 ID 不代表本运行时的任务，禁止把此 Connector 用作桌面失联后的透明替代。
 

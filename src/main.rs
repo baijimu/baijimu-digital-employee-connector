@@ -10,7 +10,12 @@ use invoke_dispatch::invoke_http;
 mod baijimu_cli;
 mod child_process;
 mod cli;
+mod employee;
+mod employee_invocation;
+mod employee_management;
+mod employee_workspaces;
 mod json_compat;
+mod management;
 mod process_runtime;
 mod project_checkout;
 mod project_preparation;
@@ -161,29 +166,7 @@ fn handle_connection(mut stream: TcpStream, state: Arc<AppState>) -> Result<(), 
         } else {
             serde_json::from_slice(&request.body).map_err(|e| HttpError::new(400, e.to_string()))?
         };
-        match (request.method.as_str(), path) {
-            ("GET", "/management/v1/setup/state")
-            | ("POST", "/management/v1/setup/ensure-ready") => Ok(state.client.status()),
-            ("POST", "/management/v1/projects/checkout") => {
-                let _lock = state
-                    .management_operation
-                    .lock()
-                    .map_err(|_| HttpError::internal("project lock poisoned"))?;
-                let request = serde_json::from_value(body)
-                    .map_err(|e| HttpError::new(400, format!("项目检出请求无效：{e}")))?;
-                serde_json::to_value(
-                    project_checkout::prepare(request)
-                        .map_err(|e| HttpError::internal(e.to_string()))?,
-                )
-                .map_err(|e| HttpError::internal(e.to_string()))
-            }
-            _ => Err(HttpError::coded(
-                404,
-                "接口不受此 Connector 支持",
-                "METHOD_NOT_SUPPORTED",
-                json!({"path":path}),
-            )),
-        }
+        management::route(&request.method, path, body, &state)
     })();
     match response {
         Ok(data) => write_json(&mut stream, 200, &json!({"ok":true,"data":data})),
