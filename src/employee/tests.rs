@@ -50,5 +50,14 @@ fn persisted_registration_survives_restart_and_corruption_fails_closed() {
     }
     fs::write(directory.join("employee.json"), "{broken").unwrap();
     assert!(load(&directory).is_err());
+    fs::write(
+        directory.join("employee.json"),
+        "\"private-value-in-invalid-file\"",
+    )
+    .unwrap();
+    assert!(!load(&directory)
+        .unwrap_err()
+        .message
+        .contains("private-value"));
     fs::remove_dir_all(directory).unwrap();
 }

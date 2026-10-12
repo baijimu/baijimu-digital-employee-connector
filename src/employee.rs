@@ -81,7 +81,7 @@ pub(crate) fn load(directory: &Path) -> Result<Option<Employee>, HttpError> {
         Err(error) => return Err(HttpError::internal(format!("读取员工配置失败: {error}"))),
     };
     let employee: Employee = serde_json::from_slice(&bytes)
-        .map_err(|error| HttpError::internal(format!("员工配置损坏: {error}")))?;
+        .map_err(|_| HttpError::internal("员工配置损坏，请在本地修复配置文件"))?;
     employee.validate()?;
     Ok(Some(employee))
 }
