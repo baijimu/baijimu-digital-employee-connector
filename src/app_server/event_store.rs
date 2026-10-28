@@ -11,9 +11,12 @@ use std::sync::Mutex;
 use std::thread;
 
 const EVENT_PUBLISH_QUEUE_CAPACITY: usize = 256;
+/// Per-subscriber live buffer. A subscriber that falls this far behind is
+/// dropped and resumes with its last cursor (or receives a resync).
+const STREAM_SUBSCRIBER_CAPACITY: usize = 1024;
 
 #[derive(Clone, Debug)]
-struct ConnectorEvent {
+pub(crate) struct ConnectorEvent {
     sequence: u64,
     received_at: String,
     method: String,
@@ -24,9 +27,74 @@ struct ConnectorEvent {
 struct EventState {
     sequence: u64,
     retained: VecDeque<ConnectorEvent>,
+    subscribers: Vec<SyncSender<ConnectorEvent>>,
 }
 
-pub(super) struct EventStore {
+/// A position in this process's notification stream: `{streamId}:{sequence}`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StreamCursor {
+    pub(crate) stream_id: String,
+    pub(crate) sequence: u64,
+}
+
+impl StreamCursor {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        let (stream_id, sequence) = value.rsplit_once(':')?;
+        if stream_id.is_empty() || stream_id.chars().any(char::is_control) {
+            return None;
+        }
+        Some(Self {
+            stream_id: stream_id.to_string(),
+            sequence: sequence.parse().ok()?,
+        })
+    }
+
+    pub(crate) fn encode(&self) -> String {
+        format!("{}:{}", self.stream_id, self.sequence)
+    }
+}
+
+pub(crate) struct StreamSubscription {
+    /// Set when the requested cursor cannot be continued; entries follow it.
+    pub(crate) resync: Option<StreamCursor>,
+    pub(crate) backlog: Vec<StreamEntry>,
+    pub(crate) live: Receiver<ConnectorEvent>,
+    pub(crate) stream_id: String,
+}
+
+pub(crate) struct StreamEntry {
+    pub(crate) cursor: StreamCursor,
+    pub(crate) data: Value,
+}
+
+impl StreamSubscription {
+    pub(crate) fn entry(&self, event: ConnectorEvent) -> StreamEntry {
+        event.into_entry(&self.stream_id)
+    }
+}
+
+impl ConnectorEvent {
+    fn payload(&self) -> Value {
+        json!({
+            "sequence": self.sequence,
+            "receivedAt": self.received_at,
+            "method": self.method,
+            "params": self.params,
+        })
+    }
+
+    fn into_entry(self, stream_id: &str) -> StreamEntry {
+        StreamEntry {
+            cursor: StreamCursor {
+                stream_id: stream_id.to_string(),
+                sequence: self.sequence,
+            },
+            data: self.payload(),
+        }
+    }
+}
+
+pub(crate) struct EventStore {
     state: Mutex<EventState>,
     publisher: Option<EventPublisher>,
     stream_id: String,
@@ -49,7 +117,7 @@ struct PublisherWorker {
     client: reqwest::blocking::Client,
 }
 impl EventStore {
-    pub(super) fn push(&self, method: &str, params: Value) {
+    pub(crate) fn push(&self, method: &str, params: Value) {
         if method == "turn/completed" {
             if let Some(thread_id) = params.get("threadId").and_then(Value::as_str) {
                 if let Err(error) = thread_state::mark_thread_unread(&connector_home(), thread_id) {
@@ -84,12 +152,53 @@ impl EventStore {
         while state.retained.len() > MAX_EVENTS {
             state.retained.pop_front();
         }
+        state
+            .subscribers
+            .retain(|subscriber| subscriber.try_send(event.clone()).is_ok());
         drop(state);
-        if let Some(publisher) = &self.publisher {
-            publisher.publish_raw(event);
-            if let Some(domain_event) = domain_event {
-                publisher.publish_domain(domain_event);
+        if let (Some(publisher), Some(domain_event)) = (&self.publisher, domain_event) {
+            publisher.publish_domain(domain_event);
+        }
+    }
+
+    /// Opens the live stream after `after`. Retained entries newer than the
+    /// cursor are replayed first; a cursor from another process run or one
+    /// that left the retention window yields a resync at the current tail.
+    pub(crate) fn subscribe(&self, after: Option<&StreamCursor>) -> StreamSubscription {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        let (sender, live) = mpsc::sync_channel(STREAM_SUBSCRIBER_CAPACITY);
+        let current = StreamCursor {
+            stream_id: self.stream_id.clone(),
+            sequence: state.sequence,
+        };
+        let oldest = state
+            .retained
+            .front()
+            .map_or(state.sequence, |event| event.sequence.saturating_sub(1));
+        let (resync, backlog) = match after {
+            None => (None, Vec::new()),
+            Some(after)
+                if after.stream_id == self.stream_id
+                    && after.sequence >= oldest
+                    && after.sequence <= state.sequence =>
+            {
+                let backlog = state
+                    .retained
+                    .iter()
+                    .filter(|event| event.sequence > after.sequence)
+                    .cloned()
+                    .map(|event| event.into_entry(&self.stream_id))
+                    .collect();
+                (None, backlog)
             }
+            Some(_) => (Some(current), Vec::new()),
+        };
+        state.subscribers.push(sender);
+        StreamSubscription {
+            resync,
+            backlog,
+            live,
+            stream_id: self.stream_id.clone(),
         }
     }
 
@@ -113,14 +222,7 @@ impl EventStore {
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
-            .map(|event| {
-                json!({
-                    "sequence": event.sequence,
-                    "receivedAt": event.received_at,
-                    "method": event.method,
-                    "params": event.params,
-                })
-            })
+            .map(ConnectorEvent::payload)
             .collect::<Vec<_>>();
         json!({"latestSequence": state.sequence, "events": events})
     }
@@ -151,20 +253,6 @@ impl EventPublisher {
         };
         thread::spawn(move || worker.run(receiver));
         Some(Self { sender })
-    }
-
-    fn publish_raw(&self, event: ConnectorEvent) {
-        self.enqueue(PublishJob {
-            event_name: "codexNotification",
-            event_id: random_event_id(),
-            occurred_at: event.received_at.clone(),
-            payload: json!({
-                "sequence": event.sequence,
-                "receivedAt": event.received_at,
-                "method": event.method,
-                "params": event.params,
-            }),
-        });
     }
 
     fn publish_domain(&self, event: events::DomainEvent) {
@@ -230,7 +318,7 @@ impl PublisherWorker {
 
 impl EventStore {
     #[cfg(test)]
-    pub(super) fn in_memory() -> Self {
+    pub(crate) fn in_memory() -> Self {
         Self {
             state: Mutex::new(EventState::default()),
             publisher: None,
@@ -315,5 +403,109 @@ mod handoff_tests {
         let requests = server.join().unwrap();
         assert_eq!(requests.len(), 4);
         assert!(requests.iter().all(|request| request == &requests[0]));
+    }
+}
+
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+
+    fn cursor(stream_id: &str, sequence: u64) -> StreamCursor {
+        StreamCursor {
+            stream_id: stream_id.into(),
+            sequence,
+        }
+    }
+
+    fn sequences(subscription: &StreamSubscription) -> Vec<u64> {
+        subscription
+            .backlog
+            .iter()
+            .map(|entry| entry.cursor.sequence)
+            .collect()
+    }
+
+    #[test]
+    fn cursor_round_trips_and_rejects_malformed_values() {
+        assert_eq!(StreamCursor::parse("abc:12"), Some(cursor("abc", 12)));
+        assert_eq!(StreamCursor::parse("a:b:3"), Some(cursor("a:b", 3)));
+        assert_eq!(cursor("abc", 12).encode(), "abc:12");
+        for invalid in ["", "abc", ":3", "abc:", "abc:-1", "abc:x", "a\nb:1"] {
+            assert_eq!(StreamCursor::parse(invalid), None, "{invalid}");
+        }
+    }
+
+    #[test]
+    fn subscription_replays_retained_entries_or_resyncs() {
+        let store = EventStore::in_memory();
+        for index in 0..3 {
+            store.push("item/started", json!({"index": index}));
+        }
+        let live = store.subscribe(None);
+        assert!(live.resync.is_none() && live.backlog.is_empty());
+
+        let resumed = store.subscribe(Some(&cursor("test-stream", 1)));
+        assert!(resumed.resync.is_none());
+        assert_eq!(sequences(&resumed), vec![2, 3]);
+        assert_eq!(
+            resumed.backlog[0].data,
+            json!({"sequence":2,"receivedAt":resumed.backlog[0].data["receivedAt"],"method":"item/started","params":{"index":1}})
+        );
+        assert!(store
+            .subscribe(Some(&cursor("test-stream", 0)))
+            .resync
+            .is_none());
+        assert!(store
+            .subscribe(Some(&cursor("test-stream", 3)))
+            .backlog
+            .is_empty());
+
+        for stale in [cursor("previous-run", 2), cursor("test-stream", 9)] {
+            let subscription = store.subscribe(Some(&stale));
+            assert_eq!(subscription.resync, Some(cursor("test-stream", 3)));
+            assert!(subscription.backlog.is_empty());
+        }
+
+        store.push("item/completed", json!({}));
+        assert_eq!(live.live.try_recv().unwrap().sequence, 4);
+        assert_eq!(resumed.live.try_recv().unwrap().sequence, 4);
+    }
+
+    #[test]
+    fn cursor_outside_retention_resyncs() {
+        let store = EventStore::in_memory();
+        for _ in 0..(MAX_EVENTS + 5) {
+            store.push("item/delta", json!({}));
+        }
+        let oldest_kept = 6;
+        assert!(store
+            .subscribe(Some(&cursor("test-stream", oldest_kept - 1)))
+            .resync
+            .is_none());
+        let subscription = store.subscribe(Some(&cursor("test-stream", oldest_kept - 2)));
+        assert_eq!(
+            subscription.resync,
+            Some(cursor("test-stream", (MAX_EVENTS + 5) as u64))
+        );
+    }
+
+    #[test]
+    fn slow_or_closed_subscribers_are_dropped_without_blocking_producers() {
+        let store = EventStore::in_memory();
+        let slow = store.subscribe(None);
+        drop(store.subscribe(None));
+        for _ in 0..(STREAM_SUBSCRIBER_CAPACITY + 1) {
+            store.push("item/delta", json!({}));
+        }
+        assert_eq!(store.state.lock().unwrap().subscribers.len(), 0);
+        let mut received = 0;
+        while slow.live.try_recv().is_ok() {
+            received += 1;
+        }
+        assert_eq!(received, STREAM_SUBSCRIBER_CAPACITY);
+        assert!(matches!(
+            slow.live.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        ));
     }
 }
