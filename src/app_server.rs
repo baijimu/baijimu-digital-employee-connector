@@ -1,4 +1,4 @@
-mod event_store;
+pub(crate) mod event_store;
 mod host_receipt;
 mod server_requests;
 
@@ -397,6 +397,13 @@ impl CodexClient {
 
     pub(crate) fn recent_events(&self, body: &Value) -> Value {
         self.events.recent(body)
+    }
+
+    pub(crate) fn subscribe_notifications(
+        &self,
+        after: Option<&event_store::StreamCursor>,
+    ) -> event_store::StreamSubscription {
+        self.events.subscribe(after)
     }
 
     pub(crate) fn shutdown(&self) {

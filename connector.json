@@ -97,7 +97,8 @@
       "connector.process.host-managed.v1",
       "connector.managed-tool-dependencies.v1",
       "connector.presentation.icon.v1",
-      "connector.events.durable-handoff"
+      "connector.events.durable-handoff",
+      "connector.notification-stream.v1"
     ]
   },
   "managedToolDependencies": [
@@ -1281,15 +1282,6 @@
   ],
   "events": [
     {
-      "name": "codexNotification",
-      "description": "本地 Codex app-server 发出的通知。",
-      "enabled": true,
-      "payload_schema": {
-        "type": "object",
-        "additionalProperties": true
-      }
-    },
-    {
       "name": "codexTurnCompleted",
       "description": "Codex 轮次完成、中断或失败时发出的稳定领域事件。",
       "enabled": true,
@@ -1523,6 +1515,9 @@
       }
     }
   ],
+  "notificationStream": {
+    "path": "/streams/notifications"
+  },
   "ui": {
     "type": "embedded",
     "entry": "ui/index.html",

@@ -16,6 +16,7 @@ mod employee_management;
 mod employee_workspaces;
 mod json_compat;
 mod management;
+mod notification_stream;
 mod process_runtime;
 mod project_checkout;
 mod project_preparation;
@@ -149,6 +150,28 @@ fn handle_connection(mut stream: TcpStream, state: Arc<AppState>) -> Result<(), 
             &json!({"ok":true,"status":{"connector":{"name":CONNECTOR_NAME,"version":VERSION,"pid":std::process::id()}}}),
         );
     }
+    if request.method == "GET" && path == notification_stream::NOTIFICATION_STREAM_PATH {
+        let subscription = request
+            .workspace_id
+            .ok_or_else(|| {
+                HttpError::coded(
+                    400,
+                    "本地应用调用缺少可信工作区上下文",
+                    "WORKSPACE_CONTEXT_REQUIRED",
+                    json!({}),
+                )
+            })
+            .and_then(|_| notification_stream::parse_cursor(request.last_event_id.as_deref()))
+            .map(|after| state.client.subscribe_notifications(after.as_ref()));
+        return match subscription {
+            Ok(subscription) => notification_stream::serve(&mut stream, subscription),
+            Err(e) => write_json(
+                &mut stream,
+                e.status,
+                &json!({"ok":false,"error":{"code":e.code,"message":e.message,"data":e.data}}),
+            ),
+        };
+    }
     let response: Result<Value, HttpError> = (|| {
         if request.method == "POST" && path.starts_with("/invoke/") {
             let workspace = request.workspace_id.ok_or_else(|| {
@@ -261,6 +284,7 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
         })
     };
     let authorization = header("authorization");
+    let last_event_id = header("last-event-id");
     let workspace_id = header("x-baijimu-workspace-id")
         .map(|value| value.parse::<u64>())
         .transpose()
@@ -270,6 +294,7 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
         method: parts.next().unwrap_or_default().to_string(),
         path: parts.next().unwrap_or_default().to_string(),
         authorization,
+        last_event_id,
         workspace_id,
         body: buffer[body_start..].to_vec(),
     })
@@ -279,6 +304,7 @@ struct HttpRequest {
     method: String,
     path: String,
     authorization: Option<String>,
+    last_event_id: Option<String>,
     workspace_id: Option<u64>,
     body: Vec<u8>,
 }

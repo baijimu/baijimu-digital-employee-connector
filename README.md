@@ -65,3 +65,12 @@ python3 tools/smoke-runtime.py --connector target/debug/baijimu-digital-employee
 Connector 通过宿主 HTTP 接口交接事件；`HostEventReceipt` 是客户端对宿主确认的类型化投影，不编译依赖 Relay 服务实现。仅接受 `contractVersion: 2.0.0`、匹配的应用与事件 ID，以及 `queued` 或 `no_subscribers` 状态；其他响应保持原事件等待重试。
 
 `test/fixtures/host-event-receipts.json` 与 Bridge Agent 的同名协议样例一致：宿主测试实际序列化结果，Connector 测试消费结果。宿主最小版本及能力要求仍由 `connector.json` 声明。
+
+## 实时输出流
+
+app-server 的逐条通知不再作为 `codexNotification` 事件上传，而是通过 `GET /streams/notifications`（SSE）提供，只在宿主挂接时才被拉取。鉴权和工作区 Header 与 `/invoke/*` 相同。
+
+- 每条通知为 `event: notification`，`id` 为 `{streamId}:{sequence}`，`data` 为 `{sequence, receivedAt, method, params}`。`streamId` 每次进程启动重新生成，`sequence` 在进程内递增。
+- 带 `Last-Event-ID` 时先补发内存中保留的后续条目（最近 1000 条）；游标来自其他进程运行或已超出保留窗口时，先发 `event: resync`（`id` 为当前位置），消费者需用 `readThread` / `listThreadTurns` 对账。格式错误返回 `400 INVALID_STREAM_CURSOR`。
+- 每 15 秒发送一行注释保活；订阅者积压超过 1024 条会被断开，重连后按游标续传。
+- `codexTurnCompleted`、`codexThreadClosed`、`codexThreadArchived` 仍是业务事件，经宿主事件交接上传。
