@@ -2,7 +2,7 @@
   "schemaVersion": "3.0.0",
   "appId": "digital-employee-connector",
   "name": "Codex 数字员工连接器",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "托管独立 Codex app-server，使用专属会话、配置和凭据目录运行数字员工。",
   "icon": {
     "mediaType": "image/png",
@@ -15,7 +15,7 @@
   "source": {
     "type": "github",
     "repo": "baijimu/baijimu-digital-employee-connector",
-    "revision": "v3.0.0"
+    "revision": "v4.0.0"
   },
   "runtime": {
     "type": "process",
