@@ -128,38 +128,6 @@
     },
     "additionalProperties": false
   },
-  "remoteCapabilities": [
-    {
-      "name": "codex.project.read",
-      "risk": "medium",
-      "description": "从数字员工独立 Codex 状态、项目配置和任务元数据中读取项目根目录。"
-    },
-    {
-      "name": "codex.thread.read",
-      "risk": "medium",
-      "description": "读取、列出和搜索数字员工 Codex 任务元数据及流式输出。"
-    },
-    {
-      "name": "codex.thread.read-state.write",
-      "risk": "medium",
-      "description": "将一个数字员工 Codex 任务标记为已读或未读，供连接器管理会话。"
-    },
-    {
-      "name": "codex.app.read",
-      "risk": "medium",
-      "description": "列出数字员工 Codex 账号可见的 app-server 应用和连接器。"
-    },
-    {
-      "name": "codex.turn.write",
-      "risk": "medium",
-      "description": "向数字员工 Codex 发送提示词和引导指令。"
-    },
-    {
-      "name": "codex.turn.interrupt",
-      "risk": "medium",
-      "description": "中断正在执行的 Codex 轮次。"
-    }
-  ],
   "transport": {
     "type": "http",
     "baseUrl": "http://127.0.0.1:18112"
